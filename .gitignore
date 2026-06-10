@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+ENV/
+
+# Django
+db.sqlite3
+db.sqlite3-journal
+staticfiles/
+media/
+
+# Local secrets and target-site session data
+.env
+.env.*
+tk55tk_config.json
+tk55tk_output/
+storage_state.json
+
+# Logs and runtime files
+*.log
+*.pid
+*.sock
+django_server.out.log
+django_server.err.log
+
+# Tests and coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Playwright
+playwright-report/
+test-results/
+
+# Editors and OS files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

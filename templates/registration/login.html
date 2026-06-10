@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录</title>
+  <link rel="stylesheet" href="/static/portal/site.css">
+</head>
+<body>
+  <main class="login-shell">
+    <form method="post" class="login-box">
+      {% csrf_token %}
+      <h1>登录</h1>
+      {{ form.as_p }}
+      <button type="submit">登录</button>
+      <a href="/">返回搜索</a>
+    </form>
+  </main>
+</body>
+</html>
