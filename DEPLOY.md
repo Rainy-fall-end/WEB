@@ -88,6 +88,17 @@ python -m playwright install chromium
 python -m playwright install-deps chromium
 ```
 
+脚本默认使用 headless Chromium，并在 Linux 下自动加入这些启动参数：
+
+```text
+--no-sandbox
+--disable-setuid-sandbox
+--disable-dev-shm-usage
+--disable-gpu
+```
+
+这能减少服务器、Docker、root 用户环境下的浏览器启动问题。不要在无桌面服务器上使用 `--headed`。
+
 ## 4. 配置目标站账号
 
 在服务器上创建或修改：
@@ -363,6 +374,21 @@ cd /opt/search-console
 source .venv/bin/activate
 python login_tk55tk.py --headless
 systemctl restart search-console
+```
+
+查看脚本日志：
+
+```bash
+tail -f /opt/search-console/tk55tk_output/login.log
+tail -f /opt/search-console/tk55tk_output/search.log
+```
+
+如果 Chromium 启动失败，优先重新执行：
+
+```bash
+source /opt/search-console/.venv/bin/activate
+python -m playwright install chromium
+python -m playwright install-deps chromium
 ```
 
 清空搜索缓存：

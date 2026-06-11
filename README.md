@@ -64,6 +64,15 @@ python manage.py runserver 127.0.0.1:8000
 python -m playwright install-deps chromium
 ```
 
+脚本默认使用 headless 浏览器，适合 Linux 服务器。如果在有桌面的机器上调试并想看到浏览器窗口，可以加：
+
+```bash
+python login_tk55tk.py --headed
+python search_tk55tk.py 青铜 --headed
+```
+
+Linux 服务器如果没有 `DISPLAY`，不要使用 `--headed`。
+
 访问地址：
 
 - 搜索首页：http://127.0.0.1:8000/
@@ -133,6 +142,21 @@ python search_tk55tk.py 青铜 --headless
 ```bash
 python search_tk55tk.py 青铜 --headless --no-fetch-prices
 ```
+
+日志默认写入：
+
+```text
+tk55tk_output/login.log
+tk55tk_output/search.log
+```
+
+也可以指定日志级别和日志文件：
+
+```bash
+python search_tk55tk.py 青铜 --log-level DEBUG --log-file tk55tk_output/search_debug.log
+```
+
+日志走 stderr，不会破坏 stdout 输出的 JSON。
 
 返回 JSON 示例：
 

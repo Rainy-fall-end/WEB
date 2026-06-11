@@ -2,11 +2,14 @@ import argparse
 import asyncio
 import getpass
 import json
+import logging
 import os
 from pathlib import Path
 
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
+
+from tk55tk_runtime import browser_launch_kwargs, linux_browser_help, setup_logging
 
 
 DEFAULT_URL = "https://www.tk55tk.com/"
@@ -16,7 +19,9 @@ DEFAULT_TIMEOUT_MS = 15_000
 DEFAULT_SLOW_MO = 100
 DEFAULT_REUSE_STATE = False
 DEFAULT_KEEP_OPEN = False
-DEFAULT_HEADLESS = False
+DEFAULT_HEADLESS = True
+
+LOGGER = logging.getLogger("login_tk55tk")
 
 USERNAME_SELECTORS = [
     'input[name*="user" i]',
@@ -97,11 +102,11 @@ async def try_open_login(page):
 
         try:
             await opener.click(timeout=2_000)
-            print(f"Clicked login opener: {selector}")
+            LOGGER.info("Clicked login opener: %s", selector)
             await page.wait_for_timeout(1_000)
             return True
         except Exception as exc:
-            print(f"Could not click login opener {selector!r}: {exc}")
+            LOGGER.warning("Could not click login opener %r: %s", selector, exc)
     return False
 
 
@@ -113,13 +118,13 @@ async def submit_login(password_box, page):
     try:
         await form_submit.wait_for(state="visible", timeout=1_000)
         await form_submit.click(timeout=3_000)
-        print("Clicked submit button in the login form.")
+        LOGGER.info("Clicked submit button in the login form.")
         return
     except PlaywrightTimeoutError:
         pass
 
     await page.keyboard.press("Enter")
-    print("Pressed Enter to submit.")
+    LOGGER.info("Pressed Enter to submit.")
 
 
 async def follow_discuz_redirect(page):
@@ -127,7 +132,7 @@ async def follow_discuz_redirect(page):
     try:
         await redirect_link.wait_for(state="visible", timeout=3_000)
         await redirect_link.click(timeout=3_000)
-        print("Followed Discuz redirect link.")
+        LOGGER.info("Followed Discuz redirect link.")
         try:
             await page.wait_for_load_state("domcontentloaded", timeout=10_000)
         except PlaywrightTimeoutError:
@@ -141,7 +146,7 @@ async def save_debug_files(page, output_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
     await page.screenshot(path=output_dir / "latest.png", full_page=True)
     (output_dir / "latest.html").write_text(await page.content(), encoding="utf-8")
-    print(f"Saved debug files under: {output_dir.resolve()}")
+    LOGGER.info("Saved debug files under: %s", output_dir.resolve())
 
 
 def load_config(path):
@@ -162,6 +167,9 @@ async def run(args):
     password = args.password or os.getenv("TK55TK_PASSWORD") or config.get("password")
     url = args.url or config.get("url") or DEFAULT_URL
     output_dir = Path(args.output_dir or config.get("output_dir") or OUTPUT_DIR)
+    log_file = args.log_file or output_dir / "login.log"
+    global LOGGER
+    LOGGER = setup_logging("login_tk55tk", args.log_level, log_file)
 
     if not username:
         username = input("TK55TK username: ").strip()
@@ -170,23 +178,32 @@ async def run(args):
 
     output_dir.mkdir(parents=True, exist_ok=True)
     state_path = output_dir / "storage_state.json"
+    LOGGER.info("Starting login: url=%s output_dir=%s headless=%s", url, output_dir, args.headless)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=args.headless, slow_mo=args.slow_mo)
+        try:
+            browser = await p.chromium.launch(**browser_launch_kwargs(args.headless, args.slow_mo, LOGGER))
+        except Exception as exc:
+            LOGGER.exception("Failed to launch Chromium.")
+            raise RuntimeError(linux_browser_help()) from exc
+
         context_kwargs = {}
         if args.reuse_state and state_path.exists():
             context_kwargs["storage_state"] = state_path
+            LOGGER.info("Reusing storage state: %s", state_path)
 
         context = await browser.new_context(**context_kwargs)
         page = await context.new_page()
         page.set_default_timeout(args.timeout_ms)
 
         try:
+            LOGGER.info("Opening login page.")
             await page.goto(url, wait_until="domcontentloaded")
             await page.wait_for_timeout(1_000)
 
             frame, username_box, username_selector, password_box, password_selector = await find_login_fields(page)
             if not password_box:
+                LOGGER.info("Login fields not visible immediately; trying to open login panel.")
                 await try_open_login(page)
                 frame, username_box, username_selector, password_box, password_selector = await find_login_fields(page)
 
@@ -199,7 +216,7 @@ async def run(args):
 
             await username_box.fill(username)
             await password_box.fill(password)
-            print(f"Filled username via {username_selector}; password via {password_selector}.")
+            LOGGER.info("Filled username via %s; password via %s.", username_selector, password_selector)
 
             await submit_login(password_box, page)
             try:
@@ -210,15 +227,16 @@ async def run(args):
 
             await context.storage_state(path=state_path)
             await save_debug_files(page, output_dir)
-            print(f"Saved login session to: {state_path.resolve()}")
+            LOGGER.info("Saved login session to: %s", state_path.resolve())
 
             if args.keep_open:
-                print("Browser will stay open. Press Ctrl+C in this terminal to stop.")
+                LOGGER.info("Browser will stay open. Press Ctrl+C in this terminal to stop.")
                 while True:
                     await page.wait_for_timeout(1_000)
 
         finally:
             if not args.keep_open:
+                LOGGER.info("Closing browser.")
                 await context.close()
                 await browser.close()
 
@@ -232,6 +250,8 @@ def parse_args():
     parser.add_argument("--output-dir", help="Override output directory from config.")
     parser.add_argument("--timeout-ms", type=int, default=DEFAULT_TIMEOUT_MS)
     parser.add_argument("--slow-mo", type=int, default=DEFAULT_SLOW_MO)
+    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument("--log-file", help="Write logs to this file. Defaults to output_dir/login.log.")
     parser.add_argument(
         "--reuse-state",
         action="store_true",
@@ -249,6 +269,12 @@ def parse_args():
         action="store_true",
         default=DEFAULT_HEADLESS,
         help="Run without showing the browser.",
+    )
+    parser.add_argument(
+        "--headed",
+        action="store_false",
+        dest="headless",
+        help="Show the browser window. Use only on machines with a desktop display.",
     )
     return parser.parse_args()
 
