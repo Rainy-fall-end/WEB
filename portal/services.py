@@ -63,7 +63,7 @@ def build_cache_key(keyword, sources, limit, can_view_prices):
         "sources": source_signature,
         "limit": limit,
         "can_view_prices": can_view_prices,
-        "version": 2,
+        "version": 3,
     }
     encoded = json.dumps(raw_key, ensure_ascii=False, sort_keys=True).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -162,7 +162,7 @@ def search_all_sources(keyword, user=None, requested_limit=None):
         "count": len(combined_results),
         "exchange_rate": {
             "rmb": 1,
-            "tongbao": 10,
+            "tongbao": 100,
         },
         "sources": source_summaries,
         "source": source_summaries[0] if source_summaries else None,

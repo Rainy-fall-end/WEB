@@ -27,11 +27,20 @@
 
   <main class="shell">
     <section class="search-panel">
-      <form method="get" class="search-form">
+      <form method="get" class="search-form" id="search-form">
         <input name="q" value="{{ keyword }}" placeholder="输入关键词" autofocus>
-        <button type="submit">搜索</button>
+        <button type="submit" id="search-button">搜索</button>
       </form>
       <p class="hint">当前单源：TK55TK。后续可在后台添加更多 source 和 adapter。</p>
+      <div class="loading-panel" id="loading-panel" aria-live="polite">
+        <div class="loading-row">
+          <span id="loading-text">正在搜索</span>
+          <span class="loading-time" id="loading-time">0s</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-bar"></div>
+        </div>
+      </div>
     </section>
 
     {% if error %}
@@ -74,12 +83,30 @@
           <p class="empty">没有找到结果。</p>
         {% endfor %}
       </section>
-
-      <section class="json-box">
-        <h2>JSON</h2>
-        <pre>{{ payload_json }}</pre>
-      </section>
     {% endif %}
   </main>
+  <script>
+    const form = document.getElementById("search-form");
+    const button = document.getElementById("search-button");
+    const panel = document.getElementById("loading-panel");
+    const text = document.getElementById("loading-text");
+    const time = document.getElementById("loading-time");
+    const messages = ["正在搜索", "正在读取结果", "正在打开详情页", "正在计算价格"];
+
+    if (form && button && panel) {
+      form.addEventListener("submit", () => {
+        let seconds = 0;
+        panel.classList.add("is-visible");
+        button.disabled = true;
+        button.textContent = "搜索中";
+
+        window.setInterval(() => {
+          seconds += 1;
+          time.textContent = `${seconds}s`;
+          text.textContent = messages[Math.min(messages.length - 1, Math.floor(seconds / 4))];
+        }, 1000);
+      });
+    }
+  </script>
 </body>
 </html>

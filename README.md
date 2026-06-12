@@ -1,6 +1,6 @@
 # Search Console
 
-这是一个基于 Django 的聚合搜索网站 MVP。当前搜索来源只有 `TK55TK`，后端会复用已有的 Playwright 登录态，到目标站执行搜索，进入前三条结果详情页读取售价，并按 `1 人民币 = 10 通宝` 换算价格。
+这是一个基于 Django 的聚合搜索网站 MVP。当前搜索来源只有 `TK55TK`，后端会复用已有的 Playwright 登录态，到目标站执行搜索，进入前三条结果详情页读取售价，并按 `1 人民币 = 100 通宝` 换算价格。
 
 后续可以继续接入多个网站，把它做成一个统一搜索入口。Django 负责网站、账号、后台、VIP 权限和搜索日志；每个外部网站只需要新增一个 adapter。
 
@@ -10,6 +10,7 @@
 - JSON API：适合后续接前端、App 或其他服务。
 - 详情页价格抓取：返回通宝价格和人民币换算。
 - 搜索结果缓存：同一关键词、来源、条数和价格权限命中缓存时直接返回。
+- 搜索等待状态：页面搜索时显示进度提示，避免看起来像卡住。
 - 后台管理：管理搜索来源、VIP 用户和搜索日志。
 - VIP 雏形：可控制用户单次搜索条数、是否查看价格。
 - 多来源扩展结构：当前只有一个来源，但代码已经按聚合搜索组织。
@@ -80,6 +81,8 @@ Linux 服务器如果没有 `DISPLAY`，不要使用 `--headed`。
 - 管理后台：http://127.0.0.1:8000/admin/
 
 公网部署流程见 [DEPLOY.md](DEPLOY.md)。
+
+更新日志见 [CHANGELOG.md](CHANGELOG.md)。以后每次功能更新都同步记录。
 
 ## 配置文件
 
@@ -166,7 +169,7 @@ python search_tk55tk.py 青铜 --log-level DEBUG --log-file tk55tk_output/search
   "count": 3,
   "exchange_rate": {
     "rmb": 1,
-    "tongbao": 10
+    "tongbao": 100
   },
   "results": [
     {
@@ -176,7 +179,7 @@ python search_tk55tk.py 青铜 --log-level DEBUG --log-file tk55tk_output/search
       "meta": "发布时间或其他信息",
       "price": {
         "tongbao": 400,
-        "rmb": 40,
+        "rmb": 4,
         "source_text": "售价: 400 东周列国通宝"
       }
     }
@@ -300,7 +303,7 @@ async def search_xxx(
     return {
         "keyword": keyword,
         "count": 0,
-        "exchange_rate": {"rmb": 1, "tongbao": 10},
+        "exchange_rate": {"rmb": 1, "tongbao": 100},
         "results": []
     }
 ```
