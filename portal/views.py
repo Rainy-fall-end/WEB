@@ -1,5 +1,3 @@
-import json
-
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_GET
@@ -9,23 +7,12 @@ from .services import get_user_plan, search_all_sources
 
 def home(request):
     keyword = request.GET.get("q", "").strip()
-    payload = None
-    error = ""
-
-    if keyword:
-        try:
-            payload = search_all_sources(keyword, request.user)
-        except Exception as exc:
-            error = str(exc)
 
     return render(
         request,
         "portal/index.html",
         {
             "keyword": keyword,
-            "payload": payload,
-            "payload_json": json.dumps(payload, ensure_ascii=False, indent=2) if payload else "",
-            "error": error,
             "plan": get_user_plan(request.user),
         },
     )

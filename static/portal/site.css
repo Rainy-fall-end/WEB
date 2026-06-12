@@ -156,6 +156,10 @@ button:disabled {
   padding: 12px 14px;
 }
 
+.is-hidden {
+  display: none !important;
+}
+
 .summary {
   border-bottom: 1px solid #d8dee8;
   border-top: 1px solid #d8dee8;
@@ -205,6 +209,10 @@ button:disabled {
 }
 
 .empty {
+  color: #687386;
+}
+
+.result.is-loading {
   color: #687386;
 }
 

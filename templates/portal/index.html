@@ -43,70 +43,26 @@
       </div>
     </section>
 
-    {% if error %}
-      <div class="alert">{{ error }}</div>
-    {% endif %}
+    <div class="alert is-hidden" id="search-error"></div>
 
-    {% if payload %}
-      <section class="summary">
+    <section class="summary is-hidden" id="results-summary">
         <div>
           <span class="label">关键词</span>
-          <strong>{{ payload.keyword }}</strong>
+          <strong id="summary-keyword"></strong>
         </div>
         <div>
           <span class="label">结果</span>
-          <strong>{{ payload.count }}</strong>
+          <strong id="summary-count"></strong>
         </div>
         <div>
           <span class="label">来源</span>
-          <strong>{{ payload.sources|length }}</strong>
+          <strong id="summary-sources"></strong>
         </div>
-      </section>
+    </section>
 
-      <section class="results">
-        {% for result in payload.results %}
-          <article class="result">
-            <h2><a href="{{ result.url }}" target="_blank" rel="noreferrer">{{ result.title }}</a></h2>
-            <p>{{ result.snippet }}</p>
-            <div class="meta">
-              <span>{{ result.source.name }}</span>
-              <span>{{ result.meta }}</span>
-              {% if result.price.tongbao %}
-                <span>{{ result.price.tongbao }} 通宝</span>
-                <span>约 ¥{{ result.price.rmb }}</span>
-              {% else %}
-                <span>未找到售价</span>
-              {% endif %}
-            </div>
-          </article>
-        {% empty %}
-          <p class="empty">没有找到结果。</p>
-        {% endfor %}
-      </section>
-    {% endif %}
+    <section class="results" id="results-list">
+    </section>
   </main>
-  <script>
-    const form = document.getElementById("search-form");
-    const button = document.getElementById("search-button");
-    const panel = document.getElementById("loading-panel");
-    const text = document.getElementById("loading-text");
-    const time = document.getElementById("loading-time");
-    const messages = ["正在搜索", "正在读取结果", "正在打开详情页", "正在计算价格"];
-
-    if (form && button && panel) {
-      form.addEventListener("submit", () => {
-        let seconds = 0;
-        panel.classList.add("is-visible");
-        button.disabled = true;
-        button.textContent = "搜索中";
-
-        window.setInterval(() => {
-          seconds += 1;
-          time.textContent = `${seconds}s`;
-          text.textContent = messages[Math.min(messages.length - 1, Math.floor(seconds / 4))];
-        }, 1000);
-      });
-    }
-  </script>
+  <script src="/static/portal/search.js?v=20260612b" defer></script>
 </body>
 </html>
