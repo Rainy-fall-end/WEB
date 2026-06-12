@@ -383,6 +383,12 @@ tail -f /opt/search-console/tk55tk_output/login.log
 tail -f /opt/search-console/tk55tk_output/search.log
 ```
 
+搜索默认优先使用 HTTP 快速路径，通常比启动浏览器更快。如果要排查 Playwright 浏览器路径，可以临时执行：
+
+```bash
+python search_tk55tk.py 青铜 --no-fast-http
+```
+
 如果 Chromium 启动失败，优先重新执行：
 
 ```bash

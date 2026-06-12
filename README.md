@@ -11,6 +11,7 @@
 - 详情页价格抓取：返回通宝价格和人民币换算。
 - 搜索结果缓存：同一关键词、来源、条数和价格权限命中缓存时直接返回。
 - 搜索等待状态：页面搜索时显示进度提示，避免看起来像卡住。
+- 快速搜索路径：优先用 HTTP 复用登录 Cookie 搜索，失败时自动回退 Playwright。
 - 后台管理：管理搜索来源、VIP 用户和搜索日志。
 - VIP 雏形：可控制用户单次搜索条数、是否查看价格。
 - 多来源扩展结构：当前只有一个来源，但代码已经按聚合搜索组织。
@@ -144,6 +145,18 @@ python search_tk55tk.py 青铜 --headless
 
 ```bash
 python search_tk55tk.py 青铜 --headless --no-fetch-prices
+```
+
+默认会优先走 HTTP 快速搜索路径，失败时自动回退 Playwright。调试浏览器路径时可以关闭快速路径：
+
+```bash
+python search_tk55tk.py 青铜 --no-fast-http
+```
+
+详情页价格默认并发抓取，可以调整并发数：
+
+```bash
+python search_tk55tk.py 青铜 --detail-concurrency 5
 ```
 
 日志默认写入：

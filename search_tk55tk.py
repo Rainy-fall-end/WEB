@@ -1,11 +1,15 @@
 import argparse
 import asyncio
+import html
 import json
 import logging
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from urllib.parse import urlencode, urljoin
 
+import requests
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
 
@@ -19,18 +23,252 @@ DEFAULT_TIMEOUT_MS = 15_000
 DEFAULT_SLOW_MO = 100
 DEFAULT_HEADLESS = True
 DEFAULT_FETCH_PRICES = True
+DEFAULT_DETAIL_CONCURRENCY = 3
+DEFAULT_FAST_HTTP = True
 TONGBAO_PER_RMB = 100
 
 LOGGER = logging.getLogger("search_tk55tk")
+BLOCKED_RESOURCE_TYPES = {"image", "media", "font"}
+BLOCKED_HOST_KEYWORDS = (
+    "googlesyndication.com",
+    "doubleclick.net",
+    "google-analytics.com",
+    "googletagmanager.com",
+    "google.com/recaptcha",
+)
 
 RESULT_SELECTORS = [
     'a[href*="forum.php?mod=viewthread"]',
     'a[href*="thread-"]',
 ]
+HTTP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
 
 
 def log(message):
     print(message, file=sys.stderr)
+
+
+def strip_tags(value):
+    value = re.sub(r"<script\b[^>]*>.*?</script>", "", value, flags=re.I | re.S)
+    value = re.sub(r"<style\b[^>]*>.*?</style>", "", value, flags=re.I | re.S)
+    value = re.sub(r"<[^>]+>", "", value)
+    return re.sub(r"\s+", " ", html.unescape(value)).strip()
+
+
+def response_text(response):
+    response.encoding = "gbk"
+    return response.text
+
+
+def session_from_storage_state(state_path):
+    state = json.loads(Path(state_path).read_text(encoding="utf-8"))
+    session = requests.Session()
+    session.headers.update(HTTP_HEADERS)
+    for cookie in state.get("cookies", []):
+        session.cookies.set(
+            cookie["name"],
+            cookie["value"],
+            domain=cookie.get("domain"),
+            path=cookie.get("path", "/"),
+        )
+    return session
+
+
+def get_formhash(page_html):
+    match = re.search(r'name="formhash"\s+value="([^"]+)"', page_html)
+    if not match:
+        raise RuntimeError("Could not find formhash on the home page.")
+    return match.group(1)
+
+
+def parse_http_results(page_html, base_url, limit):
+    items = re.findall(r'<li class="pbw"[^>]*>.*?</li>', page_html, flags=re.I | re.S)
+    results = []
+    seen = set()
+    for item in items:
+        link_match = re.search(
+            r'<a\s+href="(forum\.php\?mod=viewthread[^"]+)"[^>]*>(.*?)</a>',
+            item,
+            flags=re.I | re.S,
+        )
+        if not link_match:
+            continue
+
+        href = html.unescape(link_match.group(1))
+        title = strip_tags(link_match.group(2))
+        url = urljoin(base_url, href)
+        if not title or url in seen:
+            continue
+        seen.add(url)
+
+        paragraphs = re.findall(r"<p[^>]*>(.*?)</p>", item, flags=re.I | re.S)
+        paragraph_texts = [strip_tags(paragraph) for paragraph in paragraphs]
+        paragraph_texts = [text for text in paragraph_texts if text]
+        meta = next((text for text in paragraph_texts if re.search(r"\d{4}-\d{1,2}-\d{1,2}", text)), "")
+        snippet = " ".join(paragraph_texts)
+
+        results.append(
+            {
+                "title": title,
+                "url": url,
+                "snippet": snippet,
+                "meta": meta.split(" - ")[0].strip() if meta else "",
+            }
+        )
+        if len(results) >= limit:
+            break
+
+    return results
+
+
+def extract_price_from_text(page_text):
+    normalized = re.sub(r"\s+", " ", page_text).strip()
+    patterns = [
+        r"(?:售价|价格|价钱|需支付|需要支付|购买需|购买需要|支付|花费|付费)[^0-9]{0,30}(\d+(?:\.\d+)?)\s*(?:个)?(?:东周列国)?通宝",
+        r"(\d+(?:\.\d+)?)\s*(?:个)?(?:东周列国)?通宝\s*(?:/|／|一)?\s*(?:部|份|个|帖|主题)?",
+    ]
+    candidates = []
+    for pattern in patterns:
+        for match in re.finditer(pattern, normalized):
+            value = float(match.group(1))
+            start = max(0, match.start() - 35)
+            end = min(len(normalized), match.end() + 35)
+            context = normalized[start:end]
+            has_price_hint = re.search(
+                r"(售价|价格|价钱|购买|支付|花费|付费|出售|卖|通宝\s*(?:/|／|一)?\s*(?:部|份|个|帖|主题)?)",
+                context,
+            )
+            looks_like_site_credit_def = re.search(r"creditnotice|贡献|东周列国通宝", context) and value <= 10
+            if not has_price_hint or looks_like_site_credit_def:
+                continue
+            candidates.append(
+                {
+                    "tongbao": int(value) if value.is_integer() else value,
+                    "rmb": round(value / TONGBAO_PER_RMB, 2),
+                    "source_text": context,
+                }
+            )
+
+    if not candidates:
+        return {"tongbao": None, "rmb": None, "source_text": None}
+
+    candidates.sort(
+        key=lambda item: 0
+        if re.search(r"(售价|价格|购买|支付|花费|付费)", item["source_text"])
+        else 1
+    )
+    return candidates[0]
+
+
+def fetch_detail_price_http(session, result, index, total, detail_dir, timeout_ms):
+    LOGGER.info("HTTP opening detail page %s/%s: %s", index + 1, total, result["url"])
+    response = session.get(result["url"], timeout=timeout_ms / 1000)
+    response.raise_for_status()
+    page_html = response_text(response)
+    page_text = strip_tags(page_html)
+    result["price"] = extract_price_from_text(page_text)
+    html_path = detail_dir / result_filename(index, result["url"])
+    html_path.write_text(page_html, encoding="utf-8")
+    LOGGER.info("HTTP extracted price for result %s: %s", index + 1, result["price"])
+
+
+def enrich_results_with_prices_http(session, results, output_dir, timeout_ms, detail_concurrency):
+    detail_dir = output_dir / "details"
+    detail_dir.mkdir(parents=True, exist_ok=True)
+    total = len(results)
+    max_workers = max(1, detail_concurrency)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(fetch_detail_price_http, session, result, index, total, detail_dir, timeout_ms): (index, result)
+            for index, result in enumerate(results)
+        }
+        for future in as_completed(futures):
+            index, result = futures[future]
+            try:
+                future.result()
+            except Exception as exc:
+                LOGGER.exception("HTTP failed to extract price for result %s.", index + 1)
+                result["price"] = {
+                    "tongbao": None,
+                    "rmb": None,
+                    "source_text": None,
+                    "error": str(exc),
+                }
+
+
+def search_tk55tk_http_sync(keyword, url, output_dir, limit, timeout_ms, fetch_prices, detail_concurrency, state_path):
+    session = session_from_storage_state(state_path)
+    session.headers.update({"Referer": url})
+
+    home_response = session.get(url, timeout=timeout_ms / 1000)
+    home_response.raise_for_status()
+    home_html = response_text(home_response)
+    if "Rainy_fall" not in home_html and "退出" not in home_html:
+        LOGGER.warning("HTTP home page did not clearly show a logged-in session.")
+
+    formhash = get_formhash(home_html)
+    body = urlencode(
+        {
+            "mod": "forum",
+            "srchtxt": keyword,
+            "formhash": formhash,
+            "searchsubmit": "true",
+        },
+        encoding="gbk",
+    ).encode("ascii")
+    search_response = session.post(
+        urljoin(url, "search.php?searchsubmit=yes"),
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        timeout=timeout_ms / 1000,
+        allow_redirects=True,
+    )
+    search_response.raise_for_status()
+    search_html = response_text(search_response)
+    results = parse_http_results(search_html, url, limit)
+    if not results:
+        raise RuntimeError("HTTP fast search returned no parseable results.")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "search_latest.html").write_text(search_html, encoding="utf-8")
+
+    if fetch_prices:
+        enrich_results_with_prices_http(session, results, output_dir, timeout_ms, detail_concurrency)
+
+    LOGGER.info("HTTP fast search returned %s results.", len(results))
+    return {
+        "keyword": keyword,
+        "count": len(results),
+        "exchange_rate": {
+            "rmb": 1,
+            "tongbao": TONGBAO_PER_RMB,
+        },
+        "results": results,
+    }
+
+
+async def install_fast_route(context):
+    async def route_handler(route):
+        request = route.request
+        if request.resource_type in BLOCKED_RESOURCE_TYPES:
+            await route.abort()
+            return
+
+        url = request.url.lower()
+        if any(keyword in url for keyword in BLOCKED_HOST_KEYWORDS):
+            await route.abort()
+            return
+
+        await route.continue_()
+
+    await context.route("**/*", route_handler)
+    LOGGER.info("Installed resource blocking route for faster page loads.")
 
 
 async def save_debug_files(page, output_dir):
@@ -188,31 +426,41 @@ async def extract_price(page):
     )
 
 
-async def enrich_results_with_prices(context, results, output_dir, timeout_ms):
+async def enrich_one_result_with_price(context, result, index, total, detail_dir, timeout_ms):
+    page = await context.new_page()
+    page.set_default_timeout(timeout_ms)
+    try:
+        LOGGER.info("Opening detail page %s/%s: %s", index + 1, total, result["url"])
+        await page.goto(result["url"], wait_until="domcontentloaded")
+        await page.wait_for_timeout(500)
+        result["price"] = await extract_price(page)
+        html_path = detail_dir / result_filename(index, result["url"])
+        html_path.write_text(await page.content(), encoding="utf-8")
+        LOGGER.info("Extracted price for result %s: %s", index + 1, result["price"])
+    except Exception as exc:
+        LOGGER.exception("Failed to extract price for result %s.", index + 1)
+        result["price"] = {
+            "tongbao": None,
+            "rmb": None,
+            "source_text": None,
+            "error": str(exc),
+        }
+    finally:
+        await page.close()
+
+
+async def enrich_results_with_prices(context, results, output_dir, timeout_ms, detail_concurrency):
     detail_dir = output_dir / "details"
     detail_dir.mkdir(parents=True, exist_ok=True)
+    semaphore = asyncio.Semaphore(max(1, detail_concurrency))
+    total = len(results)
 
-    for index, result in enumerate(results):
-        page = await context.new_page()
-        page.set_default_timeout(timeout_ms)
-        try:
-            LOGGER.info("Opening detail page %s/%s: %s", index + 1, len(results), result["url"])
-            await page.goto(result["url"], wait_until="domcontentloaded")
-            await page.wait_for_timeout(1_000)
-            result["price"] = await extract_price(page)
-            html_path = detail_dir / result_filename(index, result["url"])
-            html_path.write_text(await page.content(), encoding="utf-8")
-            LOGGER.info("Extracted price for result %s: %s", index + 1, result["price"])
-        except Exception as exc:
-            LOGGER.exception("Failed to extract price for result %s.", index + 1)
-            result["price"] = {
-                "tongbao": None,
-                "rmb": None,
-                "source_text": None,
-                "error": str(exc),
-            }
-        finally:
-            await page.close()
+    async def guarded(index, result):
+        async with semaphore:
+            await enrich_one_result_with_price(context, result, index, total, detail_dir, timeout_ms)
+
+    LOGGER.info("Extracting detail prices with concurrency=%s.", detail_concurrency)
+    await asyncio.gather(*(guarded(index, result) for index, result in enumerate(results)))
 
 
 async def run(args):
@@ -227,6 +475,8 @@ async def run(args):
         headless=args.headless,
         fetch_prices=args.fetch_prices,
         allow_config_price_override=not args.no_config_price_override,
+        detail_concurrency=args.detail_concurrency,
+        fast_http=args.fast_http,
         log_level=args.log_level,
         log_file=args.log_file,
     )
@@ -244,6 +494,8 @@ async def search_tk55tk(
     headless=DEFAULT_HEADLESS,
     fetch_prices=None,
     allow_config_price_override=True,
+    detail_concurrency=DEFAULT_DETAIL_CONCURRENCY,
+    fast_http=DEFAULT_FAST_HTTP,
     log_level="INFO",
     log_file=None,
 ):
@@ -266,13 +518,31 @@ async def search_tk55tk(
     if not state_path.exists():
         raise SystemExit(f"Missing login state: {state_path}. Run login_tk55tk.py first.")
     LOGGER.info(
-        "Starting search: url=%s keyword_length=%s limit=%s fetch_prices=%s headless=%s",
+        "Starting search: url=%s keyword_length=%s limit=%s fetch_prices=%s detail_concurrency=%s fast_http=%s headless=%s",
         url,
         len(keyword),
         limit,
         fetch_prices,
+        detail_concurrency,
+        fast_http,
         headless,
     )
+
+    if fast_http:
+        try:
+            return await asyncio.to_thread(
+                search_tk55tk_http_sync,
+                keyword,
+                url,
+                output_dir,
+                limit,
+                timeout_ms,
+                fetch_prices,
+                detail_concurrency,
+                state_path,
+            )
+        except Exception:
+            LOGGER.exception("HTTP fast search failed; falling back to Playwright.")
 
     async with async_playwright() as p:
         try:
@@ -282,13 +552,14 @@ async def search_tk55tk(
             raise RuntimeError(linux_browser_help()) from exc
 
         context = await browser.new_context(storage_state=state_path)
+        await install_fast_route(context)
         try:
             home_page = await open_home(context, url, timeout_ms)
             result_page = await perform_search(context, home_page, keyword)
             results = await extract_results(result_page, limit)
             LOGGER.info("Extracted %s search results.", len(results))
             if fetch_prices and results:
-                await enrich_results_with_prices(context, results, output_dir, timeout_ms)
+                await enrich_results_with_prices(context, results, output_dir, timeout_ms, detail_concurrency)
             message = "" if results else await extract_message(result_page)
             await save_debug_files(result_page, output_dir)
 
@@ -320,6 +591,9 @@ def parse_args():
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     parser.add_argument("--timeout-ms", type=int, default=DEFAULT_TIMEOUT_MS)
     parser.add_argument("--slow-mo", type=int, default=DEFAULT_SLOW_MO)
+    parser.add_argument("--detail-concurrency", type=int, default=DEFAULT_DETAIL_CONCURRENCY)
+    parser.add_argument("--fast-http", action="store_true", default=DEFAULT_FAST_HTTP)
+    parser.add_argument("--no-fast-http", action="store_false", dest="fast_http")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     parser.add_argument("--log-file", help="Write logs to this file. Defaults to output_dir/search.log.")
     parser.add_argument(
