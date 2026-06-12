@@ -200,6 +200,28 @@ button:disabled {
   margin: 0 0 10px;
 }
 
+.preview-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 120px));
+  margin: 10px 0 12px;
+}
+
+.preview-link {
+  aspect-ratio: 4 / 3;
+  background: #eef2f7;
+  border: 1px solid #d8dee8;
+  display: block;
+  overflow: hidden;
+}
+
+.preview-link img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
 .meta {
   color: #687386;
   display: flex;
@@ -259,5 +281,9 @@ button:disabled {
   .search-form,
   .summary {
     grid-template-columns: 1fr;
+  }
+
+  .preview-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }

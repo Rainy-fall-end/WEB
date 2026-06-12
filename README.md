@@ -9,6 +9,7 @@
 - 搜索首页：输入关键词，展示结果列表和价格。
 - JSON API：适合后续接前端、App 或其他服务。
 - 详情页价格抓取：返回通宝价格和人民币换算。
+- 详情页预览图：每条结果最多展示 3 张帖子正文图。
 - 搜索结果缓存：同一关键词、来源、条数和价格权限命中缓存时直接返回。
 - 搜索等待状态：页面搜索时显示进度提示，避免看起来像卡住。
 - 快速搜索路径：优先用 HTTP 复用登录 Cookie 搜索，失败时自动回退 Playwright。
@@ -194,7 +195,10 @@ python search_tk55tk.py 青铜 --log-level DEBUG --log-file tk55tk_output/search
         "tongbao": 400,
         "rmb": 4,
         "source_text": "售价: 400 东周列国通宝"
-      }
+      },
+      "preview_images": [
+        "https://www.tk55tk.com/data/attachment/forum/example.jpg"
+      ]
     }
   ]
 }

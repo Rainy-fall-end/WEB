@@ -72,6 +72,22 @@ function renderSummary(payload) {
 function renderResult(result) {
   const sourceName = result.source && result.source.name ? result.source.name : "未知来源";
   const price = result.price || {};
+  const images = Array.isArray(result.preview_images) ? result.preview_images.slice(0, 3) : [];
+  const previewHtml = images.length
+    ? `
+      <div class="preview-grid">
+        ${images
+          .map(
+            (url) => `
+              <a class="preview-link" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">
+                <img src="${escapeHtml(url)}" alt="" loading="lazy" referrerpolicy="no-referrer">
+              </a>
+            `
+          )
+          .join("")}
+      </div>
+    `
+    : "";
   const priceHtml = price.tongbao
     ? `<span>${escapeHtml(price.tongbao)} 通宝</span><span>约 ¥${escapeHtml(price.rmb)}</span>`
     : "<span>未找到售价</span>";
@@ -80,6 +96,7 @@ function renderResult(result) {
     <article class="result">
       <h2><a href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">${escapeHtml(result.title)}</a></h2>
       <p>${escapeHtml(result.snippet)}</p>
+      ${previewHtml}
       <div class="meta">
         <span>${escapeHtml(sourceName)}</span>
         <span>${escapeHtml(result.meta)}</span>

@@ -25,6 +25,7 @@ DEFAULT_HEADLESS = True
 DEFAULT_FETCH_PRICES = True
 DEFAULT_DETAIL_CONCURRENCY = 3
 DEFAULT_FAST_HTTP = True
+DEFAULT_PREVIEW_IMAGE_LIMIT = 3
 TONGBAO_PER_RMB = 100
 
 LOGGER = logging.getLogger("search_tk55tk")
@@ -166,6 +167,37 @@ def extract_price_from_text(page_text):
     return candidates[0]
 
 
+def extract_preview_images_from_html(page_html, base_url, limit=DEFAULT_PREVIEW_IMAGE_LIMIT):
+    images = []
+    seen = set()
+    for match in re.finditer(r"<img\b[^>]*>", page_html, flags=re.I | re.S):
+        tag = match.group(0)
+        if not re.search(r'\binpost=["\']?1["\']?', tag, flags=re.I):
+            continue
+
+        raw_url = ""
+        for attr in ("zoomfile", "file", "src"):
+            source_match = re.search(rf'\b{attr}=["\']([^"\']+)["\']', tag, flags=re.I)
+            if source_match:
+                raw_url = html.unescape(source_match.group(1)).strip()
+                if raw_url and "static/image/" not in raw_url and "uc_server/" not in raw_url:
+                    break
+
+        if not raw_url or "static/image/" in raw_url or "uc_server/" in raw_url:
+            continue
+
+        image_url = urljoin(base_url, raw_url)
+        if image_url in seen:
+            continue
+
+        seen.add(image_url)
+        images.append(image_url)
+        if len(images) >= limit:
+            break
+
+    return images
+
+
 def fetch_detail_price_http(session, result, index, total, detail_dir, timeout_ms):
     LOGGER.info("HTTP opening detail page %s/%s: %s", index + 1, total, result["url"])
     response = session.get(result["url"], timeout=timeout_ms / 1000)
@@ -173,9 +205,15 @@ def fetch_detail_price_http(session, result, index, total, detail_dir, timeout_m
     page_html = response_text(response)
     page_text = strip_tags(page_html)
     result["price"] = extract_price_from_text(page_text)
+    result["preview_images"] = extract_preview_images_from_html(page_html, result["url"])
     html_path = detail_dir / result_filename(index, result["url"])
     html_path.write_text(page_html, encoding="utf-8")
-    LOGGER.info("HTTP extracted price for result %s: %s", index + 1, result["price"])
+    LOGGER.info(
+        "HTTP extracted detail for result %s: price=%s preview_images=%s",
+        index + 1,
+        result["price"],
+        len(result["preview_images"]),
+    )
 
 
 def enrich_results_with_prices_http(session, results, output_dir, timeout_ms, detail_concurrency):
@@ -200,6 +238,7 @@ def enrich_results_with_prices_http(session, results, output_dir, timeout_ms, de
                     "source_text": None,
                     "error": str(exc),
                 }
+                result["preview_images"] = []
 
 
 def search_tk55tk_http_sync(keyword, url, output_dir, limit, timeout_ms, fetch_prices, detail_concurrency, state_path):
@@ -426,6 +465,29 @@ async def extract_price(page):
     )
 
 
+async def extract_preview_images(page, limit=DEFAULT_PREVIEW_IMAGE_LIMIT):
+    return await page.evaluate(
+        """
+        ({ limit }) => {
+          const images = [];
+          const seen = new Set();
+          for (const img of document.querySelectorAll('img[inpost="1"]')) {
+            const rawUrl = img.getAttribute("zoomfile") || img.getAttribute("file") || img.getAttribute("src");
+            if (!rawUrl || rawUrl.includes("static/image/") || rawUrl.includes("uc_server/")) continue;
+
+            const url = new URL(rawUrl, document.baseURI).href;
+            if (seen.has(url)) continue;
+            seen.add(url);
+            images.push(url);
+            if (images.length >= limit) break;
+          }
+          return images;
+        }
+        """,
+        {"limit": limit},
+    )
+
+
 async def enrich_one_result_with_price(context, result, index, total, detail_dir, timeout_ms):
     page = await context.new_page()
     page.set_default_timeout(timeout_ms)
@@ -434,9 +496,15 @@ async def enrich_one_result_with_price(context, result, index, total, detail_dir
         await page.goto(result["url"], wait_until="domcontentloaded")
         await page.wait_for_timeout(500)
         result["price"] = await extract_price(page)
+        result["preview_images"] = await extract_preview_images(page)
         html_path = detail_dir / result_filename(index, result["url"])
         html_path.write_text(await page.content(), encoding="utf-8")
-        LOGGER.info("Extracted price for result %s: %s", index + 1, result["price"])
+        LOGGER.info(
+            "Extracted detail for result %s: price=%s preview_images=%s",
+            index + 1,
+            result["price"],
+            len(result["preview_images"]),
+        )
     except Exception as exc:
         LOGGER.exception("Failed to extract price for result %s.", index + 1)
         result["price"] = {
@@ -445,6 +513,7 @@ async def enrich_one_result_with_price(context, result, index, total, detail_dir
             "source_text": None,
             "error": str(exc),
         }
+        result["preview_images"] = []
     finally:
         await page.close()
 

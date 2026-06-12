@@ -63,7 +63,7 @@ def build_cache_key(keyword, sources, limit, can_view_prices):
         "sources": source_signature,
         "limit": limit,
         "can_view_prices": can_view_prices,
-        "version": 3,
+        "version": 4,
     }
     encoded = json.dumps(raw_key, ensure_ascii=False, sort_keys=True).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
