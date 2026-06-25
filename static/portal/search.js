@@ -63,10 +63,35 @@ function hideError() {
 }
 
 function renderSummary(payload) {
+  const sources = Array.isArray(payload.sources) ? payload.sources : [];
+  const sourceText = sources.length
+    ? sources
+        .map((source) => {
+          if (source.status === "error") {
+            return `${source.name || source.slug} 失败`;
+          }
+          return `${source.name || source.slug} ${source.count ?? 0} 条`;
+        })
+        .join(" / ")
+    : "0";
+
   summaryKeyword.textContent = payload.keyword || "";
   summaryCount.textContent = payload.count ?? 0;
-  summarySources.textContent = Array.isArray(payload.sources) ? payload.sources.length : 0;
+  summarySources.textContent = sourceText;
   summary.classList.remove("is-hidden");
+}
+
+function renderSourceWarnings(payload) {
+  const errors = Array.isArray(payload.errors) ? payload.errors : [];
+  if (!errors.length) {
+    hideError();
+    return;
+  }
+
+  const message = errors
+    .map((item) => `${item.source}: ${item.error}`)
+    .join("；");
+  showError(`部分来源搜索失败：${message}`);
 }
 
 function renderResult(result) {
@@ -108,6 +133,7 @@ function renderResult(result) {
 
 function renderResults(payload) {
   renderSummary(payload);
+  renderSourceWarnings(payload);
 
   const results = Array.isArray(payload.results) ? payload.results : [];
   if (!results.length) {

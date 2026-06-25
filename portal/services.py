@@ -90,7 +90,7 @@ def build_cache_key(keyword, sources, limit, can_view_prices):
         "sources": source_signature,
         "limit": limit,
         "can_view_prices": can_view_prices,
-        "version": 6,
+        "version": 7,
     }
     encoded = json.dumps(raw_key, ensure_ascii=False, sort_keys=True).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -111,7 +111,9 @@ def search_all_sources(keyword, user=None, requested_limit=None):
     ensure_default_sources()
     plan = get_user_plan(user)
     limit = min(requested_limit or settings.SEARCH_DEFAULT_LIMIT, plan["limit"])
-    enabled_sources = list(SearchSource.objects.filter(enabled=True).order_by("name"))
+    enabled_sources = list(SearchSource.objects.filter(enabled=True))
+    source_order = {source["slug"]: index for index, source in enumerate(DEFAULT_SOURCES)}
+    enabled_sources.sort(key=lambda source: (source_order.get(source.slug, len(source_order)), source.name.lower()))
     cache_key = build_cache_key(keyword, enabled_sources, limit, plan["can_view_prices"])
     cached = SearchCache.objects.filter(cache_key=cache_key, expires_at__gt=timezone.now()).first()
     if cached:
@@ -154,6 +156,7 @@ def search_all_sources(keyword, user=None, requested_limit=None):
                     "name": source.name,
                     "slug": source.slug,
                     "count": len(results),
+                    "status": "ok",
                 }
             )
             SearchLog.objects.create(
@@ -165,6 +168,15 @@ def search_all_sources(keyword, user=None, requested_limit=None):
             )
         except Exception as exc:
             errors.append({"source": source.slug, "error": str(exc)})
+            source_summaries.append(
+                {
+                    "name": source.name,
+                    "slug": source.slug,
+                    "count": 0,
+                    "status": "error",
+                    "error": str(exc),
+                }
+            )
             SearchLog.objects.create(
                 user=user if user and user.is_authenticated else None,
                 keyword=keyword,
@@ -199,12 +211,13 @@ def search_all_sources(keyword, user=None, requested_limit=None):
         "errors": errors,
     }
     expires_at = timezone.now() + CACHE_TTL
-    SearchCache.objects.update_or_create(
-        cache_key=cache_key,
-        defaults={
-            "keyword": keyword,
-            "payload": payload,
-            "expires_at": expires_at,
-        },
-    )
-    return attach_runtime_fields(payload, plan, False, expires_at)
+    if not errors:
+        SearchCache.objects.update_or_create(
+            cache_key=cache_key,
+            defaults={
+                "keyword": keyword,
+                "payload": payload,
+                "expires_at": expires_at,
+            },
+        )
+    return attach_runtime_fields(payload, plan, False, expires_at if not errors else None)
