@@ -13,24 +13,32 @@ from .models import SearchCache, SearchLog, SearchSource, VipSubscription
 
 CACHE_TTL = timedelta(days=7)
 
+DEFAULT_SOURCES = [
+    {
+        "slug": "tk55tk",
+        "name": "TK55TK",
+        "base_url": "https://www.tk55tk.com/",
+        "adapter_path": "search_tk55tk.search_tk55tk",
+    },
+    {
+        "slug": "qinglanhua",
+        "name": "Qinglanhua",
+        "base_url": "https://www.qinglanhua2026.com/",
+        "adapter_path": "search_qinglanhua.search_qinglanhua",
+    },
+]
+
 
 def ensure_default_sources():
-    SearchSource.objects.get_or_create(
-        slug="tk55tk",
-        defaults={
-            "name": "TK55TK",
-            "base_url": "https://www.tk55tk.com/",
-            "adapter_path": "search_tk55tk.search_tk55tk",
-        },
-    )
-    SearchSource.objects.get_or_create(
-        slug="qinglanhua",
-        defaults={
-            "name": "Qinglanhua",
-            "base_url": "https://www.qinglanhua2026.com/",
-            "adapter_path": "search_qinglanhua.search_qinglanhua",
-        },
-    )
+    for source in DEFAULT_SOURCES:
+        SearchSource.objects.get_or_create(
+            slug=source["slug"],
+            defaults={
+                "name": source["name"],
+                "base_url": source["base_url"],
+                "adapter_path": source["adapter_path"],
+            },
+        )
 
 
 def get_user_plan(user):

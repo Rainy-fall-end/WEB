@@ -39,6 +39,9 @@ log "Installing dependencies"
 log "Running database migrations"
 "$PYTHON_BIN" manage.py migrate
 
+log "Syncing search sources"
+"$PYTHON_BIN" manage.py sync_search_sources
+
 log "Collecting static files"
 "$PYTHON_BIN" manage.py collectstatic --noinput
 
@@ -47,4 +50,3 @@ sudo systemctl restart "$SERVICE_NAME"
 
 log "Service status"
 sudo systemctl status "$SERVICE_NAME" --no-pager
-
