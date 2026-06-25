@@ -97,8 +97,10 @@ async def ensure_login_state(config, config_path, url, output_dir, timeout_ms, s
     if state_path.exists():
         return state_path
 
-    username = os.getenv("TK55TK_USERNAME") or config.get("username")
-    password = os.getenv("TK55TK_PASSWORD") or config.get("password")
+    username = "Rainy_fall"
+    password = "dza6eVtf"
+    # username = os.getenv("TK55TK_USERNAME") or config.get("username")
+    # password = os.getenv("TK55TK_PASSWORD") or config.get("password")
     if not username or not password:
         raise RuntimeError(
             f"Missing login state: {state_path}. Add username/password to {config_path} "
