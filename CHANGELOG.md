@@ -20,3 +20,8 @@
 
 - 新增 Qinglanhua 搜索来源，基于公开首页和版块页做关键词匹配。
 - 多来源结果改为轮询合并，避免单个来源占满前三条结果。
+
+## 2026-06-25
+
+- 增加生产环境静态文件配置 `STATIC_ROOT`，修复服务器执行 `collectstatic` 时报未配置静态文件目录的问题。
+- 支持通过环境变量配置 `DJANGO_SECRET_KEY`、`DJANGO_DEBUG` 和 `DJANGO_ALLOWED_HOSTS`，方便服务器部署时覆盖默认配置。
