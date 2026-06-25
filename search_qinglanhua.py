@@ -14,7 +14,7 @@ from tk55tk_runtime import setup_logging
 
 
 DEFAULT_URL = "https://www.qinglanhua2026.com/"
-DEFAULT_LIMIT = 3
+DEFAULT_LIMIT = 10
 DEFAULT_TIMEOUT_MS = 15_000
 DEFAULT_DETAIL_CONCURRENCY = 3
 DEFAULT_PREVIEW_IMAGE_LIMIT = 3

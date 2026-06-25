@@ -18,7 +18,7 @@ from tk55tk_runtime import browser_launch_kwargs, linux_browser_help, setup_logg
 
 
 DEFAULT_SEARCH_KEYWORD = "\u9752\u94dc"
-DEFAULT_LIMIT = 3
+DEFAULT_LIMIT = 10
 DEFAULT_TIMEOUT_MS = 15_000
 DEFAULT_SLOW_MO = 100
 DEFAULT_HEADLESS = True

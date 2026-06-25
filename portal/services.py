@@ -70,7 +70,7 @@ def get_user_plan(user):
 
     return {
         "is_vip": True,
-        "limit": subscription.search_limit_per_query,
+        "limit": max(subscription.search_limit_per_query, settings.SEARCH_DEFAULT_LIMIT),
         "can_view_prices": subscription.can_view_prices,
         "label": subscription.plan_name,
     }
@@ -90,7 +90,7 @@ def build_cache_key(keyword, sources, limit, can_view_prices):
         "sources": source_signature,
         "limit": limit,
         "can_view_prices": can_view_prices,
-        "version": 5,
+        "version": 6,
     }
     encoded = json.dumps(raw_key, ensure_ascii=False, sort_keys=True).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
