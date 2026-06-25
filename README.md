@@ -1,6 +1,6 @@
 # Search Console
 
-这是一个基于 Django 的聚合搜索网站 MVP。当前搜索来源只有 `TK55TK`，后端会复用已有的 Playwright 登录态，到目标站执行搜索，进入前三条结果详情页读取售价，并按 `1 人民币 = 100 通宝` 换算价格。
+这是一个基于 Django 的聚合搜索网站 MVP。当前搜索来源包括 `TK55TK` 和 `Qinglanhua`。后端会复用已有的 Playwright 登录态或公开页面，到目标站执行搜索，进入前三条结果详情页读取售价/预览图，并按 `1 人民币 = 100 通宝` 换算价格。
 
 后续可以继续接入多个网站，把它做成一个统一搜索入口。Django 负责网站、账号、后台、VIP 权限和搜索日志；每个外部网站只需要新增一个 adapter。
 
@@ -25,6 +25,7 @@
 ├── requirements.txt
 ├── login_tk55tk.py              # 登录目标站，生成 storage_state.json
 ├── search_tk55tk.py             # TK55TK 搜索 adapter，也可命令行单独运行
+├── search_qinglanhua.py         # Qinglanhua 公开页面搜索 adapter
 ├── tk55tk_config.json           # 本地配置，包含账号密码，不要提交公开仓库
 ├── searchsite/                  # Django 项目配置
 ├── portal/                      # 搜索页面、API、VIP/日志/来源模型
@@ -218,7 +219,7 @@ GET:
 curl "http://127.0.0.1:8000/api/search/?q=%E9%9D%92%E9%93%9C"
 ```
 
-API 会返回聚合后的结果。现在只有一个来源，后面多个来源接入后，结果里的 `source` 字段会区分来自哪个网站。
+API 会返回聚合后的结果。当前默认来源包括 `TK55TK` 和 `Qinglanhua`，结果里的 `source` 字段会区分来自哪个网站。
 
 ## 缓存机制
 

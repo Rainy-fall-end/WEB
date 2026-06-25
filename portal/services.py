@@ -14,6 +14,25 @@ from .models import SearchCache, SearchLog, SearchSource, VipSubscription
 CACHE_TTL = timedelta(days=7)
 
 
+def ensure_default_sources():
+    SearchSource.objects.get_or_create(
+        slug="tk55tk",
+        defaults={
+            "name": "TK55TK",
+            "base_url": "https://www.tk55tk.com/",
+            "adapter_path": "search_tk55tk.search_tk55tk",
+        },
+    )
+    SearchSource.objects.get_or_create(
+        slug="qinglanhua",
+        defaults={
+            "name": "Qinglanhua",
+            "base_url": "https://www.qinglanhua2026.com/",
+            "adapter_path": "search_qinglanhua.search_qinglanhua",
+        },
+    )
+
+
 def get_user_plan(user):
     if not user.is_authenticated:
         return {
@@ -63,7 +82,7 @@ def build_cache_key(keyword, sources, limit, can_view_prices):
         "sources": source_signature,
         "limit": limit,
         "can_view_prices": can_view_prices,
-        "version": 4,
+        "version": 5,
     }
     encoded = json.dumps(raw_key, ensure_ascii=False, sort_keys=True).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -81,14 +100,7 @@ def attach_runtime_fields(payload, plan, cache_hit, expires_at=None):
 
 
 def search_all_sources(keyword, user=None, requested_limit=None):
-    SearchSource.objects.get_or_create(
-        slug="tk55tk",
-        defaults={
-            "name": "TK55TK",
-            "base_url": "https://www.tk55tk.com/",
-            "adapter_path": "search_tk55tk.search_tk55tk",
-        },
-    )
+    ensure_default_sources()
     plan = get_user_plan(user)
     limit = min(requested_limit or settings.SEARCH_DEFAULT_LIMIT, plan["limit"])
     enabled_sources = list(SearchSource.objects.filter(enabled=True).order_by("name"))
@@ -105,6 +117,7 @@ def search_all_sources(keyword, user=None, requested_limit=None):
         return attach_runtime_fields(cached.payload, plan, True, cached.expires_at)
 
     combined_results = []
+    result_groups = []
     source_summaries = []
     errors = []
 
@@ -127,7 +140,7 @@ def search_all_sources(keyword, user=None, requested_limit=None):
                     "name": source.name,
                     "slug": source.slug,
                 }
-            combined_results.extend(results)
+            result_groups.append(results)
             source_summaries.append(
                 {
                     "name": source.name,
@@ -153,10 +166,18 @@ def search_all_sources(keyword, user=None, requested_limit=None):
                 error=str(exc),
             )
 
+    for index in range(limit):
+        for group in result_groups:
+            if index < len(group):
+                combined_results.append(group[index])
+                if len(combined_results) >= limit:
+                    break
+        if len(combined_results) >= limit:
+            break
+
     if not combined_results and errors:
         raise RuntimeError("; ".join(f"{item['source']}: {item['error']}" for item in errors))
 
-    combined_results = combined_results[:limit]
     payload = {
         "keyword": keyword,
         "count": len(combined_results),
