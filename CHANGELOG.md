@@ -49,3 +49,8 @@
 ## 2026-06-25
 
 - 修复 TK55TK 登录态缺失时搜索请求触发 `SystemExit`，导致 Gunicorn 返回 HTML 500 错误页的问题；现在会作为普通搜索源错误处理并返回 JSON。
+
+## 2026-06-25
+
+- TK55TK 搜索在缺少 `tk55tk_output/storage_state.json` 时会自动使用配置文件或环境变量中的账号密码登录并生成登录态，然后继续搜索。
+- `search_tk55tk.py` 新增 `--no-auto-login` 参数，用于需要手动管理登录态时关闭自动登录。

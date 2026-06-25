@@ -3,8 +3,10 @@ import asyncio
 import html
 import json
 import logging
+import os
 import re
 import sys
+from types import SimpleNamespace
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import urlencode, urljoin
@@ -13,7 +15,7 @@ import requests
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
 
-from login_tk55tk import DEFAULT_CONFIG, DEFAULT_URL, OUTPUT_DIR, load_config
+from login_tk55tk import DEFAULT_CONFIG, DEFAULT_URL, OUTPUT_DIR, load_config, run as run_login
 from tk55tk_runtime import browser_launch_kwargs, linux_browser_help, setup_logging
 
 
@@ -26,9 +28,11 @@ DEFAULT_FETCH_PRICES = True
 DEFAULT_DETAIL_CONCURRENCY = 3
 DEFAULT_FAST_HTTP = True
 DEFAULT_PREVIEW_IMAGE_LIMIT = 3
+DEFAULT_AUTO_LOGIN = True
 TONGBAO_PER_RMB = 100
 
 LOGGER = logging.getLogger("search_tk55tk")
+_AUTO_LOGIN_LOCK = asyncio.Lock()
 BLOCKED_RESOURCE_TYPES = {"image", "media", "font"}
 BLOCKED_HOST_KEYWORDS = (
     "googlesyndication.com",
@@ -86,6 +90,46 @@ def get_formhash(page_html):
     if not match:
         raise RuntimeError("Could not find formhash on the home page.")
     return match.group(1)
+
+
+async def ensure_login_state(config, config_path, url, output_dir, timeout_ms, slow_mo, headless, log_level):
+    state_path = output_dir / "storage_state.json"
+    if state_path.exists():
+        return state_path
+
+    username = os.getenv("TK55TK_USERNAME") or config.get("username")
+    password = os.getenv("TK55TK_PASSWORD") or config.get("password")
+    if not username or not password:
+        raise RuntimeError(
+            f"Missing login state: {state_path}. Add username/password to {config_path} "
+            "or set TK55TK_USERNAME and TK55TK_PASSWORD, then run login_tk55tk.py once."
+        )
+
+    async with _AUTO_LOGIN_LOCK:
+        if state_path.exists():
+            return state_path
+
+        LOGGER.info("Login state is missing; running automatic TK55TK login.")
+        await run_login(
+            SimpleNamespace(
+                config=str(config_path),
+                url=url,
+                username=username,
+                password=password,
+                output_dir=str(output_dir),
+                timeout_ms=timeout_ms,
+                slow_mo=slow_mo,
+                log_level=log_level,
+                log_file=str(output_dir / "login.log"),
+                reuse_state=False,
+                keep_open=False,
+                headless=headless,
+            )
+        )
+
+    if not state_path.exists():
+        raise RuntimeError(f"Automatic login finished but did not create login state: {state_path}")
+    return state_path
 
 
 def parse_http_results(page_html, base_url, limit):
@@ -546,6 +590,7 @@ async def run(args):
         allow_config_price_override=not args.no_config_price_override,
         detail_concurrency=args.detail_concurrency,
         fast_http=args.fast_http,
+        auto_login=args.auto_login,
         log_level=args.log_level,
         log_file=args.log_file,
     )
@@ -565,6 +610,7 @@ async def search_tk55tk(
     allow_config_price_override=True,
     detail_concurrency=DEFAULT_DETAIL_CONCURRENCY,
     fast_http=DEFAULT_FAST_HTTP,
+    auto_login=DEFAULT_AUTO_LOGIN,
     log_level="INFO",
     log_file=None,
 ):
@@ -585,7 +631,18 @@ async def search_tk55tk(
         fetch_prices = DEFAULT_FETCH_PRICES
     state_path = output_dir / "storage_state.json"
     if not state_path.exists():
-        raise RuntimeError(f"Missing login state: {state_path}. Run login_tk55tk.py first.")
+        if not auto_login:
+            raise RuntimeError(f"Missing login state: {state_path}. Run login_tk55tk.py first.")
+        state_path = await ensure_login_state(
+            config=config,
+            config_path=config_path,
+            url=url,
+            output_dir=output_dir,
+            timeout_ms=timeout_ms,
+            slow_mo=slow_mo,
+            headless=headless,
+            log_level=log_level,
+        )
     LOGGER.info(
         "Starting search: url=%s keyword_length=%s limit=%s fetch_prices=%s detail_concurrency=%s fast_http=%s headless=%s",
         url,
@@ -663,6 +720,7 @@ def parse_args():
     parser.add_argument("--detail-concurrency", type=int, default=DEFAULT_DETAIL_CONCURRENCY)
     parser.add_argument("--fast-http", action="store_true", default=DEFAULT_FAST_HTTP)
     parser.add_argument("--no-fast-http", action="store_false", dest="fast_http")
+    parser.add_argument("--no-auto-login", action="store_false", dest="auto_login", default=DEFAULT_AUTO_LOGIN)
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     parser.add_argument("--log-file", help="Write logs to this file. Defaults to output_dir/search.log.")
     parser.add_argument(
