@@ -571,7 +571,7 @@ async def search_tk55tk(
     config = load_config(config_path)
     keyword = keyword or config.get("search_keyword") or DEFAULT_SEARCH_KEYWORD
     if not keyword:
-        raise SystemExit("Missing keyword. Usage: python search_tk55tk.py <keyword>")
+        raise ValueError("Missing keyword. Usage: python search_tk55tk.py <keyword>")
 
     url = url or config.get("url") or DEFAULT_URL
     output_dir = Path(output_dir or config.get("output_dir") or OUTPUT_DIR)
@@ -585,7 +585,7 @@ async def search_tk55tk(
         fetch_prices = DEFAULT_FETCH_PRICES
     state_path = output_dir / "storage_state.json"
     if not state_path.exists():
-        raise SystemExit(f"Missing login state: {state_path}. Run login_tk55tk.py first.")
+        raise RuntimeError(f"Missing login state: {state_path}. Run login_tk55tk.py first.")
     LOGGER.info(
         "Starting search: url=%s keyword_length=%s limit=%s fetch_prices=%s detail_concurrency=%s fast_http=%s headless=%s",
         url,
