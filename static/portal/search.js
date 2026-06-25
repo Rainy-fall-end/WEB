@@ -118,6 +118,19 @@ function renderResults(payload) {
   resultsList.innerHTML = results.map(renderResult).join("");
 }
 
+async function readJsonResponse(response) {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  const text = await response.text();
+  const titleMatch = text.match(/<title[^>]*>(.*?)<\/title>/i);
+  const title = titleMatch ? titleMatch[1].replace(/\s+/g, " ").trim() : "";
+  const status = response.status ? `HTTP ${response.status}` : "非 JSON 响应";
+  throw new Error(title ? `${status}: ${title}` : `${status}: 服务器返回了 HTML 页面，请检查后端日志`);
+}
+
 async function search(keyword) {
   hideError();
   setLoading(true);
@@ -129,7 +142,7 @@ async function search(keyword) {
         Accept: "application/json",
       },
     });
-    const payload = await response.json();
+    const payload = await readJsonResponse(response);
 
     if (!response.ok) {
       throw new Error(payload.error || "搜索失败");
