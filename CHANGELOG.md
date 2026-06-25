@@ -25,3 +25,7 @@
 
 - 增加生产环境静态文件配置 `STATIC_ROOT`，修复服务器执行 `collectstatic` 时报未配置静态文件目录的问题。
 - 支持通过环境变量配置 `DJANGO_SECRET_KEY`、`DJANGO_DEBUG` 和 `DJANGO_ALLOWED_HOSTS`，方便服务器部署时覆盖默认配置。
+
+## 2026-06-25
+
+- 新增 `deploy_restart.sh`，用于服务器更新代码后一键拉取、安装依赖、迁移数据库、收集静态文件并重启 `search-console` 服务。
