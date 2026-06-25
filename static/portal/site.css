@@ -101,6 +101,26 @@ button:disabled {
   margin: 10px 0 0;
 }
 
+.search-meta {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.visit-stats {
+  color: #687386;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 13px;
+  gap: 8px 12px;
+  margin-top: 10px;
+}
+
+.visit-stats strong {
+  color: #172033;
+}
+
 .loading-panel {
   display: none;
   margin-top: 14px;
@@ -279,8 +299,15 @@ button:disabled {
   }
 
   .search-form,
+  .search-meta,
   .summary {
     grid-template-columns: 1fr;
+  }
+
+  .search-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .preview-grid {

@@ -72,3 +72,25 @@ class SearchCache(models.Model):
 
     def __str__(self):
         return f"{self.keyword} expires at {self.expires_at:%Y-%m-%d %H:%M:%S}"
+
+
+class AccessLog(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    method = models.CharField(max_length=10)
+    path = models.CharField(max_length=500)
+    query_string = models.TextField(blank=True)
+    status_code = models.PositiveSmallIntegerField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    referer = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["created_at"]),
+            models.Index(fields=["ip_address"]),
+        ]
+
+    def __str__(self):
+        return f"{self.method} {self.path} from {self.ip_address or 'unknown'}"

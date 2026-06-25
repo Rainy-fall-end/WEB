@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import SearchCache, SearchLog, SearchSource, VipSubscription
+from .models import AccessLog, SearchCache, SearchLog, SearchSource, VipSubscription
 
 
 @admin.register(SearchSource)
@@ -31,3 +31,11 @@ class SearchCacheAdmin(admin.ModelAdmin):
     list_filter = ("expires_at", "created_at")
     search_fields = ("keyword", "cache_key")
     readonly_fields = ("cache_key", "payload", "created_at", "updated_at")
+
+
+@admin.register(AccessLog)
+class AccessLogAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "ip_address", "user", "method", "path", "status_code")
+    list_filter = ("method", "status_code", "created_at")
+    search_fields = ("ip_address", "path", "query_string", "user_agent", "referer", "user__username")
+    readonly_fields = ("created_at",)

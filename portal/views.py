@@ -2,7 +2,15 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
+from .models import AccessLog
 from .services import get_user_plan, search_all_sources
+
+
+def get_access_stats():
+    return {
+        "total_visits": AccessLog.objects.count(),
+        "unique_visitors": AccessLog.objects.exclude(ip_address__isnull=True).values("ip_address").distinct().count(),
+    }
 
 
 def home(request):
@@ -14,6 +22,7 @@ def home(request):
         {
             "keyword": keyword,
             "plan": get_user_plan(request.user),
+            "access_stats": get_access_stats(),
         },
     )
 

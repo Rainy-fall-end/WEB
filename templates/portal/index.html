@@ -31,7 +31,13 @@
         <input name="q" value="{{ keyword }}" placeholder="输入关键词" autofocus>
         <button type="submit" id="search-button">搜索</button>
       </form>
-      <p class="hint">当前支持多个来源聚合搜索，结果会按来源轮询合并展示。</p>
+      <div class="search-meta">
+        <p class="hint">当前支持多个来源聚合搜索，结果会按来源轮询合并展示。</p>
+        <div class="visit-stats" aria-label="访问统计">
+          <span>累计访问 <strong>{{ access_stats.total_visits }}</strong> 次</span>
+          <span>访客 <strong>{{ access_stats.unique_visitors }}</strong> 人</span>
+        </div>
+      </div>
       <div class="loading-panel" id="loading-panel" aria-live="polite">
         <div class="loading-row">
           <span id="loading-text">正在搜索</span>
@@ -63,6 +69,6 @@
     <section class="results" id="results-list">
     </section>
   </main>
-  <script src="/static/portal/search.js?v=20260625e" defer></script>
+  <script src="/static/portal/search.js?v=20260625f" defer></script>
 </body>
 </html>
